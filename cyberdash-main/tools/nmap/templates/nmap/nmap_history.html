@@ -1,0 +1,96 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <title>Ping Tool</title>
+  <style>
+    body {
+      font-family: Arial, sans-serif;
+      max-width: 900px;
+      margin: 30px auto;
+      padding: 0 15px;
+      background: #f9f9f9;
+      color: #333;
+    }
+
+    table {
+      width: 100%;
+      border-collapse: collapse;
+      margin-bottom: 25px;
+      background: #fff;
+      box-shadow: 0 1px 3px rgba(0,0,0,0.1);
+      border-radius: 6px;
+      overflow: hidden;
+    }
+
+    th, td {
+      padding: 12px 15px;
+      border-bottom: 1px solid #ddd;
+      text-align: left;
+      vertical-align: top;
+      font-size: 14px;
+    }
+
+    th {
+      background-color: #2980b9;
+      color: white;
+      font-weight: 600;
+    }
+
+    tr:nth-child(even) {
+      background-color: #f4f7fa;
+    }
+
+    pre {
+      margin: 0;
+      font-family: monospace;
+      white-space: pre-wrap;
+      max-height: 100px;
+      overflow: auto;
+    }
+
+    a {
+      color: #c0392b;
+      text-decoration: none;
+      font-weight: bold;
+    }
+    a:hover {
+      text-decoration: underline;
+    }
+
+    p[style*="color: red;"] {
+      font-weight: bold;
+      color: #c0392b;
+      margin-top: 10px;
+      margin-bottom: 10px;
+      text-align: center;
+    }
+  </style>
+</head>
+<body>
+    <table>
+      <tr>
+         <th>Target</th>
+         <th>Flags</th>
+         <th>Timestamp</th>
+         <th>Result</th>
+      </tr> 
+{% for r in results %}
+<tr>
+  <td>{{ r.target }}</td>
+  <td>{{r.flags }}</td>
+  <td>{{ r.timestamp.strftime('%Y-%m-%d %H:%M:%S') }}</td>
+  <td><pre>{{ r.result[:100] }}...</pre></td>  <!-- preview only -->
+  <td>
+     <a href="{{url_for('nmap.delete_entry',id=r.id)}}">Delete</a>
+  </td>
+</tr>
+{% endfor %}
+   {% with messages = get_flashed_messages(with_categories=true) %}
+      {% if messages %}
+        {% for category, message in messages %}
+          <p style="color: red;">{{ message }}</p>
+        {% endfor %}
+      {% endif %}
+    {% endwith %}
+</body>
+</html>
