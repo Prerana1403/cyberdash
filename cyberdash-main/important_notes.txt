@@ -315,7 +315,395 @@ for port in range(20, 30):
 | Run nmap              | `subprocess` | `check_output(['nmap', ...])` |
 | Whois info            | `whois`      | `whois(domain)`               |
 
+------------------------------------------------------------------------------------------------------------------------------------------------------------------
+routes.py:-
+import os
+import xml.etree.ElementTree as ET
+from flask import Blueprint, render_template, request, redirect, url_for, flash
+
+nessus_bp = Blueprint('nessus', __name__, template_folder='templates/nessus')
+
+UPLOAD_FOLDER = os.path.join(os.getcwd(), 'uploads')
+os.makedirs(UPLOAD_FOLDER, exist_ok=True)
+
+# Parser function
+def parse_nessus(filepath):
+    tree = ET.parse(filepath)
+    root = tree.getroot()
+    summary_data = []
+
+    for report_host in root.findall(".//ReportHost"):
+        host_ip = report_host.attrib.get("name", "Unknown")
+        host_properties = {tag.attrib['name']: tag.text for tag in report_host.findall("HostProperties/tag")}
+        os_name = host_properties.get("operating-system", "Unknown OS")
+
+        findings = []
+        for item in report_host.findall("ReportItem"):
+            findings.append({
+                "plugin": item.attrib.get("pluginName", "Unknown Plugin"),
+                "severity": item.attrib.get("severity", "0"),
+                "port": item.attrib.get("port", "N/A"),
+                "protocol": item.attrib.get("protocol", "N/A"),
+                "description": item.findtext("description", "").strip()[:300]
+            })
+
+        summary_data.append({
+            "host_ip": host_ip,
+            "os": os_name,
+            "findings": findings
+        })
+
+    return summary_data
+
+# Routes
+@nessus_bp.route('/nessus_home')
+def nessus_home():
+    return render_template('nessus_dashboard.html')
+
+@nessus_bp.route('/nessus/upload', methods=['GET', 'POST'])
+def nessus_upload():
+    if request.method == 'POST':
+        file = request.files['nessus_file']
+        if file and file.filename.endswith('.nessus'):
+            filepath = os.path.join(UPLOAD_FOLDER, file.filename)
+            file.save(filepath)
+            summary = parse_nessus(filepath)
+            return render_template('nessus_results.html', report=summary)
+        else:
+            flash("Please upload a valid .nessus file", "error")
+            return redirect(url_for('nessus.nessus_upload'))
+    return render_template('nessus_dashboard.html')
+
+@nessus_bp.route('/nessus/analyze', methods=['POST'])
+def analyze_nessus():
+    file = request.files.get('nessus_file')
+    if not file or not file.filename.endswith('.nessus'):
+        flash("Please upload a valid .nessus file", "error")
+        return redirect(url_for('nessus.nessus_home'))
+
+    filepath = os.path.join(UPLOAD_FOLDER, file.filename)
+    file.save(filepath)
+    parsed_data = parse_nessus(filepath)
+    print(parsed_data)
+    return render_template('nessus_results.html', report=parsed_data)
+------------------------------------------------------------------------
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>Nessus Analyzer Dashboard</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            padding: 30px;
+            background-color: #f4f6f9;
+            color: #333;
+        }
+
+        .container {
+            max-width: 800px;
+            margin: auto;
+        }
+
+        h1 {
+            text-align: center;
+            margin-bottom: 20px;
+        }
+
+        .button-top {
+            display: flex;
+            justify-content: center;
+            margin-bottom: 20px;
+        }
+
+        .button-top a {
+            padding: 10px 20px;
+            background-color: #007bff;
+            color: white;
+            text-decoration: none;
+            border-radius: 5px;
+        }
+
+        .upload-box {
+            background-color: white;
+            padding: 20px;
+            border-radius: 10px;
+            box-shadow: 0 0 10px rgba(0,0,0,0.1);
+            margin-bottom: 30px;
+        }
+
+        .upload-box form {
+            display: flex;
+            flex-direction: column;
+            gap: 10px;
+        }
+
+        input[type="file"] {
+            padding: 5px;
+        }
+
+        button {
+            width: 150px;
+            padding: 10px;
+            background-color: #28a745;
+            color: white;
+            border: none;
+            border-radius: 5px;
+            cursor: pointer;
+        }
+
+        button:hover {
+            background-color: #218838;
+        }
+
+        .instructions {
+            background-color: #e9ecef;
+            padding: 15px;
+            border-radius: 10px;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>Nessus Scan Analyzer</h1>
+
+        <div style="margin-top: 20px; margin-bottom: 40px; text-align: center;">
+  <a href="https://localhost:8834" target="_blank" rel="noopener noreferrer">
+    <button style="padding: 10px 20px; font-size: 16px; background-color: #007BFF; color: white; border: none; border-radius: 5px;">
+      Open Nessus GUI
+    </button>
+  </a>
+</div>
+
+
+
+        <div class="upload-box">
+            <form action="{{ url_for('nessus.analyze_nessus') }}" method="post" enctype="multipart/form-data">
+                <label for="nessus_file">Upload your exported <strong>.nessus</strong> file:</label>
+                <input type="file" name="nessus_file" id="nessus_file" accept=".nessus" required>
+                <button type="submit">Analyze</button>
+            </form>
+        </div>
+
+        <div class="instructions">
+            <h3>Instructions</h3>
+            <ul>
+                <li>Open the Nessus GUI and complete your scan.</li>
+                <li>Export the scan results as a <code>.nessus</code> file.</li>
+                <li>Upload the file here and click "Analyze".</li>
+                <li>Wait for the report summary to be generated.</li>
+            </ul>
+        </div>
+    </div>
+</body>
+</html>
+------------------------------------------------------------------------
+<!-- templates/nessus/nessus_results.html -->
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>Nessus Scan Results</title>
+    <style>
+        body { font-family: Arial; padding: 20px; background: #f4f4f4; }
+        h1 { color: #333; }
+        .host { background: #fff; margin: 10px 0; padding: 15px; border-radius: 8px; box-shadow: 0 0 5px #ccc; }
+        .finding { margin-left: 20px; padding: 5px; }
+    </style>
+</head>
+<body>
+    <h1>Nessus Scan Summary</h1>
+
+    {% if report %}
+        {% for host in report %}
+            <div class="host">
+                <h3>Host: {{ host.host_ip }} | OS: {{ host.os }}</h3>
+                {% if host.findings %}
+                    {% for finding in host.findings %}
+                        <div class="finding">
+                            <strong>Plugin:</strong> {{ finding.plugin }}<br>
+                            <strong>Severity:</strong> {{ finding.severity }}<br>
+                            <strong>Port:</strong> {{ finding.port }} / {{ finding.protocol }}<br>
+                            <strong>Description:</strong> {{ finding.description }}
+                        </div>
+                    {% endfor %}
+                {% else %}
+                    <p>No findings for this host.</p>
+                {% endif %}
+            </div>
+        {% endfor %}
+    {% else %}
+        <p>No scan data found.</p>
+    {% endif %}
+</body>
+</html>
+------------------------------------------------------------------------
+
+Routes.py explanation:-
 ---
+
+## 1. **Module Imports – Why We Need Each One**
+
+```python
+import os
+import xml.etree.ElementTree as ET
+from flask import Flask, render_template, request, redirect, url_for
+from werkzeug.utils import secure_filename
+```
+
+| **Import**                    | **Purpose**                                                             |
+| ----------------------------- | ----------------------------------------------------------------------- |
+| `os`                          | For file system operations (like saving uploaded files to disk)         |
+| `xml.etree.ElementTree as ET` | To parse the `.nessus` XML files                                        |
+| `flask` modules               |                                                                         |
+| → `Flask`                     | Create the Flask web app instance                                       |
+| → `render_template`           | Render HTML pages using Jinja templates                                 |
+| → `request`                   | Access form data, uploaded files, etc.                                  |
+| → `redirect`, `url_for`       | Navigate between routes after actions (e.g. redirect after upload)      |
+| `secure_filename`             | Secure the filename of uploaded files to prevent path traversal attacks |
+
+---
+
+## 2. **The `parse_nessus(filepath)` Function**
+
+This function takes the uploaded `.nessus` file and extracts useful information.
+
+### Here's what it does step-by-step:
+
+```python
+def parse_nessus(filepath):
+    tree = ET.parse(filepath)                  # Parses the XML file
+    root = tree.getroot()                      # Gets the root of the XML tree
+    summary_data = []                          # List to store structured results
+```
+
+---
+
+### Step 1: For each Host scanned
+
+```python
+    for report_host in root.findall(".//ReportHost"):
+        host_ip = report_host.attrib.get("name", "Unknown")
+```
+
+* Finds each `<ReportHost>` tag, which contains details about a scanned machine.
+* Grabs the `name` attribute — usually the IP address.
+
+---
+
+### Step 2: Get Operating System
+
+```python
+        host_properties = {tag.attrib['name']: tag.text for tag in report_host.findall("HostProperties/tag")}
+        os_name = host_properties.get("operating-system", "Unknown OS")
+```
+
+* Extracts metadata like OS, hostname, etc. from `<HostProperties>` → `<tag name="...">value</tag>`
+
+---
+
+### Step 3: Get Security Findings for that Host
+
+```python
+        findings = []
+        for item in report_host.findall("ReportItem"):
+            findings.append({
+                "plugin": item.attrib.get("pluginName", "Unknown Plugin"),
+                "severity": item.attrib.get("severity", "0"),
+                "port": item.attrib.get("port", "N/A"),
+                "protocol": item.attrib.get("protocol", "N/A"),
+                "description": item.findtext("description", "").strip()[:300]
+            })
+```
+
+Each `<ReportItem>` is a finding:
+
+* Plugin name (what detected the issue)
+* Severity (0 = Info, 1 = Low, 2 = Medium, etc.)
+* Port + Protocol (e.g. 80/tcp)
+* Description (trimmed to 300 chars for display)
+
+---
+
+### Step 4: Store the Data for that Host
+
+```python
+        summary_data.append({
+            "host_ip": host_ip,
+            "os": os_name,
+            "findings": findings
+        })
+```
+
+Each item is a dict containing:
+
+* IP of host
+* OS name
+* List of findings
+
+Finally:
+
+```python
+    return summary_data
+```
+
+The list is returned and used to populate the HTML template (`results.html`).
+
+---
+
+##  3. **Flask Routes**
+
+You typically have 2 routes:
+
+---
+
+### `/nessus-upload` → File Upload Page
+
+```python
+@app.route('/nessus-upload', methods=['GET', 'POST'])
+def nessus_upload():
+    if request.method == 'POST':
+        file = request.files['file']
+        ...
+        filepath = os.path.join(upload_dir, filename)
+        file.save(filepath)
+        return redirect(url_for('nessus_results', filename=filename))
+    return render_template('nessus_upload.html')
+```
+
+* GET: Shows the upload form
+* POST: Handles file upload, saves it securely, redirects to `/nessus-results`
+
+---
+
+### `/nessus-results` → Results Display Page
+
+```python
+@app.route('/nessus-results/<filename>')
+def nessus_results(filename):
+    filepath = os.path.join("uploads", filename)
+    summary_data = parse_nessus(filepath)
+    return render_template("results.html", summary=summary_data)
+```
+
+* Reads the file you uploaded
+* Parses it using your function `parse_nessus()`
+* Sends the result to `results.html` where it’s shown to the user
+
+---
+
+## Summary
+
+| **Component**              | **Purpose**                                                        |
+| -------------------------- | ------------------------------------------------------------------ |
+| `parse_nessus()`           | Turns Nessus XML file into clean Python data (hosts, OS, findings) |
+| Upload route (`/upload`)   | Shows the form, saves the file                                     |
+| Results route (`/results`) | Parses and displays data in a user-friendly format                 |
+| `render_template`          | Loads HTML files and injects Python data into them                 |
+| `secure_filename`          | Prevents attacks via filenames during upload                       |
+
+
 
 
 
