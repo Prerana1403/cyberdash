@@ -1,0 +1,81 @@
+INTERNSHIP REPORT:-
+
+-> DAY-1:
+
+Read Networking Basics from pdf given
+
+-> DAY-2:
+
+Project given
+"DASHBOARD WITH TOOLS" - dashboard that integrates fully working tools with results saving in the database and the need to retrieve the results when asked from the database.
+
+understood the project to an extent. 
+
+Started with Django basics - thought of using Django over flask realized flask was easy to understand and use
+
+1-week study time was given
+
+-> DAY-3:
+
+tried a tutorial to understand what was asked and what the project needs are
+
+started with python basics and flask basics, built a flask_basics with clear understanding of the folder structure
+
+-> DAY-4:
+
+started coding routes into flask app
+
+understanding of what routes do on different methods like GET and POST
+
+-> DAY-5:
+
+started working on blueprints to keep the app and different folders separate and clean
+
+-> DAY-6:
+
+understanding of flask supported database - SQLAlchemy and Sessions
+
+mini to do app(mini project) to check on the learning
+
+DAY-7:
+
+Separated the databases from app.py into separate folders for a cleaner look and segregation 
+
+learning jinja2 template coding and embedding it into html pages
+
+started on ping tool with its own routes.py, jinja2 template embedded html pages for dashboard, and history pages
+and created database for users and login register page for the app. 
+
+wrote a pseudo code for the next tool(nmap)
+
+DAY-8:
+
+worked on suggestions styled the pages using css on the dashboards login register pages
+
+integrated nmap into the dashboard using the pseudocode
+
+DAY-9:
+
+started exploring Nessus vulnerability scanner installation,scans,results and understanding what the tool is and why is it an important tool in every cyber expert toolbox
+
+DAY-10:fr
+
+tried a tutorial to get a picture of integrating web apps into the already existing flask app
+
+DAY-11:
+
+tried understanding api and tried using it to integrate nessus into the dashboard
+
+DAY-12:
+
+reinstallation of nessus on to the lab computer,nessus plugins failed to get initialized tried to initialize plugins manually
+
+failed to integrate nessus into the dashboard
+
+DAY-13:
+
+with suggestions came up with nessus integration in a way with a button letting nessus open in a new tab and then export the scan report .nessus file parse it and analyze it,
+works fine added a simple css and javascript code into nessus_results.html to show the complete description of scans file.
+
+started on understanding API to have a better integration of nessus into the dashboard.
+
