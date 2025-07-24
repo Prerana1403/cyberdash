@@ -79,3 +79,16 @@ works fine added a simple css and javascript code into nessus_results.html to sh
 
 started on understanding API to have a better integration of nessus into the dashboard.
 
+DAY-14:
+
+tried on different ways to integrate nessus into the dashboard using api calls
+
+found GitHub repositories on nessus client api python codes
+
+researched on cybersecurity topics that will help in thesis
+
+tried to find ways to host "CYBERDASH" on local offline computers 
+
+found ways to pivot the database to consistent and centralized database 
+
+learnt ways to host app freely
