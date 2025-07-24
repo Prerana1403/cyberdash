@@ -702,6 +702,248 @@ def nessus_results(filename):
 | Results route (`/results`) | Parses and displays data in a user-friendly format                 |
 | `render_template`          | Loads HTML files and injects Python data into them                 |
 | `secure_filename`          | Prevents attacks via filenames during upload                       |
+-------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+from flask import Flask, render_template, jsonify, redirect
+from nessus_client import NessusAPI
+import os, time
+
+app = Flask(__name__)
+
+# Config: Change these to your Nessus login info
+NESSUS_URL = os.getenv('NESSUS_URL', 'https://localhost:8834')
+NESSUS_USER = os.getenv('NESSUS_USER', 'DRDLproject2025')
+NESSUS_PASS = os.getenv('NESSUS_PASS', 'DRDLproject2025')
+
+nessus = NessusAPI(NESSUS_URL, NESSUS_USER, NESSUS_PASS)
+
+@app.route('/')
+def list_scans():
+    scans = nessus.list_scans()
+    return render_template('scans.html', scans=scans)
+
+@app.route('/scan/<int:scan_id>')
+def scan_details(scan_id):
+    details = nessus.get_scan_details(scan_id)
+    return render_template('scan_details.html', scan=details)
+
+@app.route('/scan/<int:scan_id>/status')
+def scan_status(scan_id):
+    return jsonify({'status': nessus.get_scan_status(scan_id)})
+
+@app.route('/scan/<int:scan_id>/open')
+def open_gui(scan_id):
+    return redirect(f'{NESSUS_URL}/scans/{scan_id}')
+
+@app.route('/scan/<int:scan_id>/export', methods=['POST'])
+def export_scan(scan_id):
+    try:
+        file_id = nessus.request_export(scan_id)
+        for _ in range(10):  # poll until ready
+            status = nessus.check_export_status(scan_id, file_id)
+            if status == 'ready':
+                data = nessus.download_export(scan_id, file_id)
+                with open(f'scan_{scan_id}.nessus', 'wb') as f:
+                    f.write(data)
+                return jsonify({'message': f'Scan exported: scan_{scan_id}.nessus'})
+            time.sleep(2)
+        return jsonify({'error': 'Export timeout'}), 504
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
+
+
+if __name__ == '__main__':
+    app.run(debug=True)
+-------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+import requests
+import time
+import urllib3
+
+urllib3.disable_warnings()  # Disable SSL warnings for self-signed certs
+
+class NessusAPI:
+    def __init__(self, base_url, username, password):
+        self.base_url = base_url.rstrip('/')
+        self.session = requests.Session()
+        self.token = self._login(username, password)
+
+    def _login(self, username, password):
+        url = f'{self.base_url}/session'
+        response = self.session.post(url, json={'username': username, 'password': password}, verify=False)
+        response.raise_for_status()
+        token = response.json()['token']
+        self.session.headers.update({'X-Cookie': f'token={token}'})
+        return token
+
+    def list_scans(self):
+        url = f'{self.base_url}/scans'
+        response = self.session.get(url, verify=False)
+        response.raise_for_status()
+        return response.json()['scans']
+
+    def get_scan_details(self, scan_id):
+        url = f'{self.base_url}/scans/{scan_id}'
+        response = self.session.get(url, verify=False)
+        response.raise_for_status()
+        return response.json()
+
+    def get_scan_status(self, scan_id):
+        details = self.get_scan_details(scan_id)
+        return details['info']['status']  # e.g., "completed", "running"
+
+    def request_export(self, scan_id, format='nessus'):
+        url = f'{self.base_url}/scans/{scan_id}/export'
+        response = self.session.post(url, json={'format': format}, verify=False)
+        response.raise_for_status()
+        return response.json()['file']
+
+    def check_export_status(self, scan_id, file_id):
+        url = f'{self.base_url}/scans/{scan_id}/export/{file_id}/status'
+        response = self.session.get(url, verify=False)
+        response.raise_for_status()
+        return response.json()['status']  # e.g., "ready"
+
+    def download_export(self, scan_id, file_id):
+        url = f'{self.base_url}/scans/{scan_id}/export/{file_id}/download'
+        response = self.session.get(url, verify=False)
+        response.raise_for_status()
+        return response.content
+----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+<!doctype html>
+<html>
+<head>
+    <title>Scan Details - {{ scan.info.name }}</title>
+</head>
+<body>
+<h1>Scan: {{ scan.info.name }}</h1>
+<p>Status: <span id="status" aria-live="polite">{{ scan.info.status }}</span></p>
+<button id="refreshBtn">Refresh Status</button>
+<button id="exportBtn">Export Scan</button>
+
+<h2>Hosts scanned:</h2>
+<ul>
+    {% for host in scan.hosts %}
+        <li>{{ host.hostname }} - Vulnerabilities: {{ host.vulnerabilities|length }}</li>
+    {% endfor %}
+</ul>
+
+<script>
+const scanId = "{{ scan.info.id }}";  // wrapped in quotes for safety
+const refreshBtn = document.getElementById('refreshBtn');
+const exportBtn = document.getElementById('exportBtn');
+const statusSpan = document.getElementById('status');
+
+refreshBtn.onclick = async () => {
+    refreshBtn.disabled = true;
+    const originalText = refreshBtn.textContent;
+    refreshBtn.textContent = 'Refreshing...';
+    try {
+        const res = await fetch(`/scan/${scanId}/status`);
+        if (!res.ok) throw new Error('Network response was not ok');
+        const data = await res.json();
+        if (data.status) {
+            statusSpan.textContent = data.status;
+        } else {
+            alert('Error fetching status');
+        }
+    } catch (err) {
+        alert('Failed to fetch status: ' + err.message);
+    } finally {
+        refreshBtn.disabled = false;
+        refreshBtn.textContent = originalText;
+    }
+};
+
+exportBtn.onclick = async () => {
+    exportBtn.disabled = true;
+    const originalText = exportBtn.textContent;
+    exportBtn.textContent = 'Exporting...';
+    try {
+        const res = await fetch(`/scan/${scanId}/export`, { method: 'POST' });
+        if (!res.ok) throw new Error('Network response was not ok');
+        const data = await res.json();
+        alert(data.message || data.error);
+    } catch (err) {
+        alert('Failed to export: ' + err.message);
+    } finally {
+        exportBtn.disabled = false;
+        exportBtn.textContent = originalText;
+    }
+};
+</script>
+
+</body>
+</html>
+-----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+<!doctype html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8" />
+    <title>Nessus Scan List</title>
+    <style>
+        table {
+            border-collapse: collapse;
+            width: 100%;
+            max-width: 800px;
+            margin: 20px auto;
+            font-family: Arial, sans-serif;
+        }
+        thead th {
+            background-color: #333;
+            color: white;
+            padding: 10px;
+            text-align: left;
+        }
+        tbody tr:nth-child(odd) {
+            background-color: #f9f9f9;
+        }
+        tbody tr:hover {
+            background-color: #eef;
+        }
+        td, th {
+            border: 1px solid #ccc;
+            padding: 8px 12px;
+        }
+        a {
+            color: #0066cc;
+            text-decoration: none;
+        }
+        a:hover {
+            text-decoration: underline;
+        }
+        h1 {
+            text-align: center;
+            font-family: Arial, sans-serif;
+            margin-top: 40px;
+        }
+    </style>
+</head>
+<body>
+<h1>Available Nessus Scans</h1>
+<table aria-label="List of Nessus scans">
+    <thead>
+        <tr>
+            <th scope="col">Name</th>
+            <th scope="col">Status</th>
+            <th scope="col">Actions</th>
+        </tr>
+    </thead>
+    <tbody>
+    {% for scan in scans %}
+        <tr>
+            <td>{{ scan.name }}</td>
+            <td>{{ scan.status }}</td>
+            <td>
+                <a href="{{ url_for('open_gui', scan_id=scan.id) }}" target="_blank" rel="noopener noreferrer">Open in Nessus GUI</a>
+                <a href="{{ url_for('scan_details', scan_id=scan.id) }}">Details</a>
+            </td>
+        </tr>
+    {% endfor %}
+    </tbody>
+</table>
+</body>
+</html>
+-----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+
 
 
 
