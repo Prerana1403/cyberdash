@@ -943,6 +943,172 @@ exportBtn.onclick = async () => {
 </body>
 </html>
 -----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+ **Flask App Hosting & Centralized Database (Offline LAN Setup)**
+
+This guide covers:
+
+* Hosting your Flask app on a local (offline) system
+* Pivoting from a local SQLite DB to a centralized PostgreSQL or MySQL DB
+* Making user data consistent across all systems
+
+---
+
+## Part 1: Hosting a Flask App on an Offline System (Local Server)
+
+### Steps:
+
+1. **Install Flask & dependencies**
+
+   ```bash
+   pip install flask flask_sqlalchemy
+   ```
+
+2. **Update your Flask run command**
+
+   ```python
+   app.run(host='0.0.0.0', port=5000)
+   ```
+
+   This allows other computers on the same LAN to access it.
+
+3. **Get the local IP address** of your host system:
+
+   ```bash
+   ip addr  # Linux
+   ipconfig # Windows
+   ```
+
+4. **Access from other systems on LAN:**
+   In browser of system B:
+
+   ```
+   http://<host_ip>:5000
+   ```
+
+---
+
+## Part 2: Pivoting to a Centralized Database
+
+### Why?
+
+* SQLite is **file-based** → not shareable in multi-user setup
+* Use **PostgreSQL** or **MySQL** → proper LAN-capable server-based databases
+
+---
+
+## Step-by-Step Migration
+
+### 1. **Install PostgreSQL (Recommended)** on host system:
+
+```bash
+sudo apt install postgresql postgresql-contrib  # Ubuntu
+```
+
+Create user and database:
+
+```bash
+sudo -u postgres psql
+CREATE USER flaskuser WITH PASSWORD 'yourpass';
+CREATE DATABASE flaskdb;
+GRANT ALL PRIVILEGES ON DATABASE flaskdb TO flaskuser;
+```
+
+### 2. **Change Flask Config**
+
+```python
+app.config['SQLALCHEMY_DATABASE_URI'] = 'postgresql://flaskuser:yourpass@localhost/flaskdb'
+```
+
+If PostgreSQL is hosted on another machine in the LAN, replace `localhost` with its IP address.
+
+### 3. **Allow remote DB access**
+
+Edit:
+
+* `/etc/postgresql/XX/main/pg_hba.conf`
+* `/etc/postgresql/XX/main/postgresql.conf`
+
+Change:
+
+* `listen_addresses = '*'`
+* Add to `pg_hba.conf`:
+
+  ```
+  host    all             all             192.168.1.0/24         md5
+  ```
+
+Then restart PostgreSQL:
+
+```bash
+sudo service postgresql restart
+```
+
+---
+
+## Multi-System User Sharing
+
+* Now all users who access the Flask app on the LAN are **talking to one centralized DB**
+* All login, registration, and user data are synced because they come from the same DB
+
+---
+
+## Bonus: Make It More Robust
+
+| Task                       | Tool or Tip                                |
+| -------------------------- | ------------------------------------------ |
+| Serve Flask in production  | Use **gunicorn** + **nginx**               |
+| Avoid exposing DB directly | Access DB **only from Flask**, not clients |
+| Auto-start Flask on boot   | Use `systemd` or a `bash` startup script   |
+
+---
+
+## Folder Structure (Recommended)
+
+```
+project/
+│
+├── app.py
+├── models.py
+├── routes.py
+├── templates/
+│   └── ...
+├── static/
+│   └── ...
+├── config.py
+└── requirements.txt
+```
+
+---
+
+## Testing
+
+* On your host, run:
+
+  ```bash
+  flask run --host=0.0.0.0
+  ```
+* On another computer in same LAN, open browser:
+
+  ```
+  http://<host_ip>:5000
+  ```
+* Test user registration/login → data will be consistent 🎯
+
+---
+
+## TL;DR Checklist
+
+| Task                              | Details                                        |
+| --------------------------------- | ---------------------------------------------- |
+| Host Flask on LAN                 | Use `app.run(host='0.0.0.0')`                  |
+| Use Central Database (not SQLite) | PostgreSQL or MySQL                            |
+| Install DB on server              | `apt install postgresql` or MySQL              |
+| Create user/db                    | `CREATE USER`, `CREATE DATABASE`               |
+| Point SQLAlchemy to it            | `postgresql://user:pass@host/dbname`           |
+| Test multi-device access          | Visit `http://<host_ip>:5000` on other systems |
+
+------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+
 
 
 
