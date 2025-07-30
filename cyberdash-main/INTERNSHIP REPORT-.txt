@@ -92,3 +92,12 @@ tried to find ways to host "CYBERDASH" on local offline computers
 found ways to pivot the database to consistent and centralized database 
 
 learnt ways to host app freely
+
+DAY-15:
+
+worked on POSTGRESQL and migration from sqlite3 to postgresql
+
+worked on active directory and dns server(basics only notclear about what was done)
+
+DAY-16:
+
