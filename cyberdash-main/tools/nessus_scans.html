@@ -1,0 +1,111 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>Nessus Analyzer Dashboard</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            padding: 30px;
+            background-color: #f4f6f9;
+            color: #333;
+        }
+
+        .container {
+            max-width: 800px;
+            margin: auto;
+        }
+
+        h1 {
+            text-align: center;
+            margin-bottom: 20px;
+        }
+
+        .button-top {
+            display: flex;
+            justify-content: center;
+            margin-bottom: 20px;
+        }
+
+        .button-top a {
+            padding: 10px 20px;
+            background-color: #007bff;
+            color: white;
+            text-decoration: none;
+            border-radius: 5px;
+        }
+
+        .upload-box {
+            background-color: white;
+            padding: 20px;
+            border-radius: 10px;
+            box-shadow: 0 0 10px rgba(0,0,0,0.1);
+            margin-bottom: 30px;
+        }
+
+        .upload-box form {
+            display: flex;
+            flex-direction: column;
+            gap: 10px;
+        }
+
+        input[type="file"] {
+            padding: 5px;
+        }
+
+        button {
+            width: 150px;
+            padding: 10px;
+            background-color: #28a745;
+            color: white;
+            border: none;
+            border-radius: 5px;
+            cursor: pointer;
+        }
+
+        button:hover {
+            background-color: #218838;
+        }
+
+        .instructions {
+            background-color: #e9ecef;
+            padding: 15px;
+            border-radius: 10px;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>Nessus Scan Analyzer</h1>
+
+        <div style="margin-top: 20px; margin-bottom: 40px; text-align: center;">
+  <a href="https://localhost:8834" target="_blank" rel="noopener noreferrer">
+    <button style="padding: 10px 20px; font-size: 16px; background-color: #007BFF; color: white; border: none; border-radius: 5px;">
+      Open Nessus GUI
+    </button>
+  </a>
+</div>
+
+
+
+        <div class="upload-box">
+            <form action="{{ url_for('nessus.analyze_nessus') }}" method="post" enctype="multipart/form-data">
+                <label for="nessus_file">Upload your exported <strong>.nessus</strong> file:</label>
+                <input type="file" name="nessus_file" id="nessus_file" accept=".nessus" required>
+                <button type="submit">Analyze</button>
+            </form>
+        </div>
+
+        <div class="instructions">
+            <h3>Instructions</h3>
+            <ul>
+                <li>Open the Nessus GUI and complete your scan.</li>
+                <li>Export the scan results as a <code>.nessus</code> file.</li>
+                <li>Upload the file here and click "Analyze".</li>
+                <li>Wait for the report summary to be generated.</li>
+            </ul>
+        </div>
+    </div>
+</body>
+</html>
