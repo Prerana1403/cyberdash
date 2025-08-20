@@ -1108,12 +1108,221 @@ project/
 | Test multi-device access          | Visit `http://<host_ip>:5000` on other systems |
 
 -----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+import os
+import csv
+import datetime
+import subprocess
+from flask import Blueprint, render_template, current_app
+from .models import db, CiscatResult
+
+ciscat_bp = Blueprint("ciscat", __name__, template_folder="templates")
+
+# -------- Helper Functions -------- #
+def run_ciscat_scan():
+    """Runs CIS-CAT scan and outputs a CSV report (cross-platform)."""
+    timestamp = datetime.datetime.now().strftime("%Y%m%d_%H%M%S")
+    report_dir = os.path.join(current_app.root_path, "reports")
+    os.makedirs(report_dir, exist_ok=True)
+
+    csv_report = os.path.join(report_dir, f"ciscat_{timestamp}.csv")
+
+    # Load paths from config (use defaults if not set)
+    java_bin = current_app.config.get("JAVA_PATH", "java")
+    ciscat_path = os.path.normpath(current_app.config.get("CISCAT_PATH", "CIS-CAT.jar"))
+    benchmark_path = os.path.normpath(current_app.config.get("BENCHMARK_PATH", "Benchmarks/Ubuntu18_L1.xml"))
+
+    # Build subprocess command (works on Windows/Linux)
+    cmd = [
+        java_bin, "-jar", ciscat_path,
+        "-b", benchmark_path,
+        "-csv", "-n", csv_report
+    ]
+
+    subprocess.run(cmd, check=True)
+    return csv_report, timestamp
+
+
+def parse_ciscat_csv(report_file):
+    """Parses CIS-CAT CSV output into a list of dicts."""
+    results = []
+    with open(report_file, newline='', encoding="utf-8") as f:
+        reader = csv.DictReader(f)
+        for row in reader:
+            results.append({
+                "rule": row.get("Rule_Title", ""),
+                "status": row.get("Result", ""),
+                "description": row.get("Description", "")
+            })
+    return results
+
+
+def save_results_to_db(results, timestamp, benchmark_name="Default_Benchmark"):
+    """Save parsed scan results into the database."""
+    for r in results:
+        entry = CiscatResult(
+            timestamp=datetime.datetime.strptime(timestamp, "%Y%m%d_%H%M%S"),
+            benchmark=benchmark_name,
+            rule=r["rule"],
+            status=r["status"],
+            description=r["description"]
+        )
+        db.session.add(entry)
+    db.session.commit()
+
+
+# -------- Routes -------- #
+@ciscat_bp.route("/run")
+def run_scan():
+    """Run a new scan, save results, and confirm."""
+    csv_file, timestamp = run_ciscat_scan()
+    results = parse_ciscat_csv(csv_file)
+    benchmark_name = os.path.basename(current_app.config.get("BENCHMARK_PATH", "Unknown"))
+    save_results_to_db(results, timestamp, benchmark_name)
+    return f"✅ Scan complete at {timestamp}! <a href='/ciscat/latest'>View Latest Results</a>"
+
+
+@ciscat_bp.route("/latest")
+def latest_results():
+    """Show the most recent scan results."""
+    last_scan_time = db.session.query(db.func.max(CiscatResult.timestamp)).scalar()
+    results = CiscatResult.query.filter_by(timestamp=last_scan_time).all()
+
+    total = len(results)
+    passed = sum(1 for r in results if r.status == "PASS")
+    failed = total - passed
+    compliance = round((passed / total) * 100, 2) if total > 0 else 0
+
+    return render_template("ciscat/latest.html",
+                           compliance=compliance,
+                           passed=passed,
+                           failed=failed,
+                           results=results,
+                           timestamp=last_scan_time)
+
+
+@ciscat_bp.route("/history")
+def history():
+    """Show compliance history of past scans."""
+    scans = db.session.query(
+        CiscatResult.timestamp,
+        db.func.count(CiscatResult.id).label("total"),
+        db.func.sum(db.case([(CiscatResult.status == "PASS", 1)], else_=0)).label("passed")
+    ).group_by(CiscatResult.timestamp).order_by(CiscatResult.timestamp.desc()).all()
+
+    history_data = []
+    for scan in scans:
+        compliance = round((scan.passed / scan.total) * 100, 2) if scan.total > 0 else 0
+        history_data.append({
+            "timestamp": scan.timestamp,
+            "total": scan.total,
+            "passed": scan.passed,
+            "failed": scan.total - scan.passed,
+            "compliance": compliance
+        })
+
+    return render_template("ciscat/history.html", history=history_data)
+---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+from flask_sqlalchemy import SQLAlchemy
+import datetime
+
+db = SQLAlchemy()
+
+class CiscatResult(db.Model):
+    id = db.Column(db.Integer, primary_key=True)
+    timestamp = db.Column(db.DateTime, default=datetime.datetime.utcnow, index=True)
+    benchmark = db.Column(db.String(200))
+    rule = db.Column(db.String(500))
+    status = db.Column(db.String(20))
+    description = db.Column(db.Text)
+----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+<h2>CIS-CAT Latest Scan Results</h2>
+<p><b>Scan Time:</b> {{ timestamp }}</p>
+<p><b>Compliance Score:</b> {{ compliance }}%</p>
+<p>✅ Passed: {{ passed }} | ❌ Failed: {{ failed }}</p>
+
+<table border="1" cellpadding="5" cellspacing="0">
+  <tr>
+    <th>Rule</th>
+    <th>Status</th>
+    <th>Description</th>
+  </tr>
+  {% for r in results %}
+  <tr>
+    <td>{{ r.rule }}</td>
+    <td style="color: {{ 'green' if r.status == 'PASS' else 'red' }}">
+      {{ r.status }}
+    </td>
+    <td>{{ r.description }}</td>
+  </tr>
+  {% endfor %}
+</table>
+-----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+<h2>CIS-CAT Scan History</h2>
+
+<table border="1" cellpadding="5" cellspacing="0">
+  <tr>
+    <th>Scan Time</th>
+    <th>Compliance %</th>
+    <th>Passed</th>
+    <th>Failed</th>
+    <th>Total Checks</th>
+  </tr>
+  {% for scan in history %}
+  <tr>
+    <td>{{ scan.timestamp }}</td>
+    <td>{{ scan.compliance }}%</td>
+    <td>{{ scan.passed }}</td>
+    <td>{{ scan.failed }}</td>
+    <td>{{ scan.total }}</td>
+  </tr>
+  {% endfor %}
+</table>
+--------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+from flask import Flask
+from ciscat.models import db
+from ciscat.routes import ciscat_bp
+
+app = Flask(__name__)
+app.config["SQLALCHEMY_DATABASE_URI"] = "sqlite:///ciscat.db"
+app.config["SQLALCHEMY_TRACK_MODIFICATIONS"] = False
+
+db.init_app(app)
+app.register_blueprint(ciscat_bp, url_prefix="/ciscat")
+
+with app.app_context():
+    db.create_all()
 
 
 
+For Windows:
+
+app.config["JAVA_PATH"] = r"C:\Program Files\Java\jdk-17\bin\java.exe"
+app.config["CISCAT_PATH"] = r"C:\ciscat-lite\CIS-CAT.jar"
+app.config["BENCHMARK_PATH"] = r"C:\ciscat-lite\Benchmarks\Ubuntu18_L1.xml"
 
 
+For Linux:
+
+app.config["JAVA_PATH"] = "java"
+app.config["CISCAT_PATH"] = "/opt/ciscat-lite/CIS-CAT.jar"
+app.config["BENCHMARK_PATH"] = "/opt/ciscat-lite/Benchmarks/Ubuntu18_L1.xml"
 
 
+---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+CIS-CAT GUI Limitation
 
+If Flask is network-accessible:
+
+CLI scans + reports (our subprocess approach) will work fine from anywhere.
+
+But the GUI launch button (/ciscat/launch_gui) will only show GUI on the host machine’s desktop, not on remote browsers.
+
+⚠️ That’s because CIS-CAT GUI is a Java Swing desktop app → it can’t be streamed to browser directly.
+If you run Flask on a server in your lab, anyone on network can trigger a scan and view results, but only the server machine will see the GUI pop up.
+
+If you want GUI visible over the network, you’d need to:
+
+Use remote desktop (RDP/VNC) into the server
+
+Or wrap the GUI in a remote desktop-in-browser solution (like Guacamole), which is outside Flask’s scope.
 
