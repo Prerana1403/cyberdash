@@ -1,0 +1,141 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <title>Security Tools Dashboard</title>
+  <style>
+    body {
+      margin: 0;
+      font-family: Arial, sans-serif;
+      display: flex;
+    }
+
+    /* Left vertical menu */
+    .vertical-menu {
+      width: 360px;
+      height: 100vh;
+      background-color: #f4f4f4;
+      padding: 20px 30px;
+      border-right: 5px solid #ccc;
+      display: flex;
+      flex-direction: column;
+      gap: 15px;
+      box-sizing: border-box;
+    }
+
+    .vertical-menu button {
+      padding: 15px;
+      width: 100%;
+      background-color: #000;
+      color: white;
+      border: none;
+      text-align: left;
+      cursor: pointer;
+      border-radius: 100px;
+      display: flex;
+      align-items: center;
+      font-size: 16px;
+      gap: 12px;
+    }
+
+    .vertical-menu button:hover {
+      background-color: #444;
+    }
+
+    .menu-icon {
+      width: 24px;
+      height: 24px;
+    }
+
+    /* Main content */
+    .main-content {
+      flex-grow: 1;
+      height: 100vh;
+      overflow: hidden;
+    }
+
+    iframe#content-frame {
+      width: 100%;
+      height: 100%;
+      border: none;
+    }
+
+    /* Top right buttons */
+    .top-right-panel {
+      position: fixed;
+      top: 20px;
+      right: 20px;
+      display: flex;
+      flex-direction: column;
+      align-items: flex-end;
+      z-index: 1000;
+    }
+
+    .top-right-panel button {
+      margin-bottom: 10px;
+      padding: 10px 20px;
+      border: none;
+      color: white;
+      cursor: pointer;
+      border-radius: 4px;
+    }
+
+    .login-btn {
+      background-color: #4CAF50;
+    }
+  </style>
+</head>
+<body>
+
+  <!-- Sidebar Menu -->
+  <div class="vertical-menu">
+    <button onclick="loadPage('/ping_home')">
+      <img src="/static/icons/ping.jpg" alt="Host Icon" class="menu-icon"> Host Discovery
+    </button>
+    <button onclick="loadPage('/nmap_home')">
+      <img src="/static/icons/nmap.jpg" alt="NMAP Icon" class="menu-icon"> Network Discovery (NMAP)
+    </button>
+    <button onclick="loadPage('/nessus_home')">
+      <img src="icons/vul.png" alt="Nessus Icon" class="menu-icon"> Vulnerability Scanning (Nessus)
+    </button>
+    <button onclick="loadPage('/nessus2_home')">
+      <img src="icons/vul.png" alt="Nessus Icon" class="menu-icon"> Vulnerability Scanning (Nessus2)
+    </button>
+    <button>
+      <img src="icons/cis.png" alt="CIS-CAT Icon" class="menu-icon"> Compliance Auditing (CIS-CAT)
+    </button>
+    <button>
+      <img src="icons/avasyam.png" alt="Avasyam Icon" class="menu-icon"> Avasyam
+    </button>
+    <button>
+      <img src="icons/switch scan.png" alt="Switch Icon" class="menu-icon"> Switch Scan
+    </button>
+    <button>
+      <img src="icons/web application.png" alt="Web Icon" class="menu-icon"> Web Application
+    </button>
+    <button>
+      <img src="icons/auidt tool.png" alt="Router Icon" class="menu-icon"> Router Audit Tool
+    </button>
+    <button>
+      <img src="icons/dash.png" alt="Dashboard Icon" class="menu-icon"> Web Dashboard & Reports
+    </button>
+  </div>
+
+  <!-- Main display area -->
+  <div class="main-content">
+    <iframe id="content-frame" name="content-frame" src=""></iframe>
+  </div>
+
+  <!-- Top Right Logout Panel -->
+  <div class="top-right-panel">
+    <button class="login-btn" onclick="window.location.href='/logout'">Logout</button>
+    <button class="login-btn" onclick="window.location.href='/forget_me'">Forget Me</button>
+  </div>
+
+  <script>
+    function loadPage(url) {
+      document.getElementById('content-frame').src = url;
+    }
+  </script>
+</body>
+</html>

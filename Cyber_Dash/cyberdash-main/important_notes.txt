@@ -1,0 +1,712 @@
+import subprocess
+import shlex
+from flask import request, render_template
+
+@app.route('/nmap-scan', methods=['POST'])
+def nmap_scan():
+    target = request.form['target']         # e.g., "192.168.1.1"
+    flags = request.form['flags']           # e.g., "-sS -Pn -T4"
+
+    try:
+        # shlex.split safely splits flags into list: ['-sS', '-Pn', '-T4']
+        command = ['nmap'] + shlex.split(flags) + [target]
+
+        result = subprocess.check_output(command, stderr=subprocess.STDOUT, universal_newlines=True)
+
+        return render_template('scan_result.html', result=result, command=' '.join(command))
+
+    except subprocess.CalledProcessError as e:
+        return f"<pre>Nmap Error:\n{e.output}</pre>"
+    except Exception as e:
+        return f"<pre>Unexpected Error:\n{str(e)}</pre>"
+
+from flask import Blueprint, render_template, request, redirect, url_for, flash
+from models import db
+from models.port_model import PortResult
+from models.dns_model import DnsResult
+from models.nmap_model import NmapCommand, NmapResult
+import socket
+import subprocess
+
+# Correct Blueprint definitions
+port_bp = Blueprint('port_scan', __name__, template_folder='templates/port_scan')
+dns_bp = Blueprint('rev_dns_lookup', __name__, template_folder='templates/rev_dns_lookup')
+nmap_bp = Blueprint('nmap_scan', __name__, template_folder='templates/nmap_scan')
+
+
+@dns_bp.route('/rev_dns_lookup', methods=['GET', 'POST'])
+def rev_dns_lookup():
+    result = None
+    if request.method == 'POST':
+        ip = request.form['ip']
+        try:
+            result = socket.gethostbyaddr(ip)[0]
+        except Exception as e:
+            result = f"Failed: {str(e)}"
+
+        entry = DnsResult(ip=ip, result=result)
+        db.session.add(entry)
+        db.session.commit()
+
+    return render_template('dns.html', result=result)
+
+
+@port_bp.route('/port_scan', methods=['GET', 'POST'])
+def port_scan():
+    result = None
+    if request.method == 'POST':
+        target = request.form['target']
+        port = int(request.form['port'])
+
+        try:
+            sock = socket.socket()
+            sock.settimeout(0.1)
+            sock.connect((target, port))
+            result = f"Port {port} is OPEN"
+        except:
+            result = f"Port {port} is CLOSED"
+
+        entry = PortResult(target=target, result=result)
+        db.session.add(entry)
+        db.session.commit()
+
+    return render_template('port.html', result=result)
+
+Great question — and this shows you're beginning to think **not just about syntax**, but **why** we write things a certain way. Let me explain clearly:
+
+---
+
+## 🔍 What does `command = command_entry.command` mean?
+
+This line is saying:
+
+> "Take the value from the `command` field of the database row (which is `command_entry`), and store it in a Python variable called `command`."
+
+It's like saying:
+
+```python
+x = person.name
+```
+
+or
+
+```python
+message = email.subject
+```
+
+You're just **copying the value** from an object’s attribute into a new variable.
+
+---
+
+## ✅ When do we use this?
+
+You use it when:
+
+1. You **fetched a row from a database**, and
+2. You want to **access a specific column value** (like `.command`, `.username`, `.target`, etc.),
+3. And possibly **use it in a subprocess**, condition, or render it to a template.
+
+---
+
+## 🧠 Example in Nmap Route
+
+Suppose this is the command you selected from the dropdown:
+
+```python
+command_entry = NmapCommand.query.get(command_id)
+```
+
+Now `command_entry` is a **row** from your database, like:
+
+| id | name     | command |
+| -- | -------- | ------- |
+| 1  | SYN Scan | -sS     |
+
+Now you want to run that command using subprocess. So you extract the actual `-sS` part:
+
+```python
+command = command_entry.command  # ← now command = "-sS"
+```
+
+Now you can use:
+
+```python
+subprocess.check_output(['nmap', *command.split(), target])
+```
+
+If you skipped this line, and tried to do:
+
+```python
+subprocess.check_output(['nmap', *command_entry.split(), target])  ❌
+```
+
+It would crash — because `command_entry` is an object, not a string.
+
+---
+
+## 🔁 How to Know When You Need It
+
+Ask yourself:
+
+* ❓ Did I query a database row into an object?
+* ❓ Do I now need just *one field* from that object (like command, username, etc)?
+* ✅ If yes → use `variable = object.field`
+
+---
+
+## ✅ TL;DR:
+
+| Situation                 | Use                                        |
+| ------------------------- | ------------------------------------------ |
+| You queried a row         | `row = Model.query.get(id)`                |
+| You want a specific field | `field_value = row.column_name`            |
+| You want to use it later  | Store in `command = command_entry.command` |
+
+---
+
+| Task               | Code                                         |
+| ------------------ | -------------------------------------------- |
+| Add to DB          | `db.session.add(obj)`                        |
+| Commit changes     | `db.session.commit()`                        |
+| Query all entries  | `Model.query.all()`                          |
+| Query by field     | `Model.query.filter_by(field=value).first()` |
+| Get by ID (or 404) | `Model.query.get_or_404(id)`                 |
+| Delete entry       | `db.session.delete(obj)`                     |
+
+
+| Tool               | Library / Function Used  |
+| ------------------ | ------------------------ |
+| Port scan          | `socket.connect()`       |
+| Reverse DNS Lookup | `socket.gethostbyaddr()` |
+| Ping               | `subprocess.ping`        |
+| Nmap Scan          | `subprocess.nmap`        |
+| WHOIS              | `whois.whois()`          |
+
+
+
+
+### ✅ 1. What is a **socket** and why is it used?
+
+> **A socket** is a programming interface that lets your Python code **send or receive data over the internet or local network**.
+
+Imagine a phone call:
+
+* You dial a number (host + port)
+* If they pick up = “Port is open”
+* If no one picks up = “Port is closed”
+
+In programming, sockets do that dialing.
+
+---
+
+### 🔍 Use Case: Port Scanning
+
+You want to check:
+
+> Is **port 22** open on **google.com**?
+
+That means:
+
+* Create a socket
+* Try to **connect** to `google.com:22`
+* If connection works → the port is open
+* If it fails → the port is closed
+
+### ✅ Syntax:
+
+```python
+import socket
+
+sock = socket.socket()
+sock.settimeout(0.5)
+try:
+    sock.connect(("google.com", 22))
+    print("Port is open")
+except:
+    print("Port is closed")
+sock.close()
+```
+
+---
+
+### ✅ 2. Common Python Networking Modules & When to Use Them
+
+| Tool Type           | Python Module                           | Purpose                                       | Example Use              |
+| ------------------- | --------------------------------------- | --------------------------------------------- | ------------------------ |
+| Basic Port Scanning | `socket`                                | Low-level access to IPs and ports             | Port scanner, DNS lookup |
+| Reverse DNS Lookup  | `socket.gethostbyaddr()`                | Converts IP to hostname                       | Reverse DNS Tool         |
+| Whois Lookup        | `whois` (3rd party)                     | Gets domain ownership info                    | whois.google.com         |
+| Ping                | `subprocess`                            | Executes `ping` system command                | Host discovery tool      |
+| Nmap                | `subprocess`                            | Executes `nmap` CLI tool                      | Network scanner          |
+| Traceroute          | `subprocess`                            | Executes `tracert`/`traceroute` from terminal | Path tracing             |
+| DNS Lookup          | `socket.gethostbyname()` or `dnspython` | Domain → IP                                   | DNS resolution           |
+| HTTP Tools          | `requests`, `http.client`               | Send HTTP GET/POST reqs                       | Website scanners         |
+
+---
+
+### ✅ 3. Socket Functions You Should Know
+
+| Function                       | Use Case                                  |
+| ------------------------------ | ----------------------------------------- |
+| `socket.socket()`              | Create a new socket                       |
+| `socket.connect((host, port))` | Try to connect to a target + port         |
+| `socket.gethostbyname(domain)` | Get IP address of a domain                |
+| `socket.gethostbyaddr(ip)`     | Get hostname from IP (reverse DNS)        |
+| `settimeout(seconds)`          | Avoid long wait if target doesn’t respond |
+
+---
+
+### ✅ Example 1: DNS Lookup
+
+```python
+import socket
+ip = socket.gethostbyname("google.com")
+print(ip)  # Output: IP address like 142.250.77.238
+```
+
+---
+
+### ✅ Example 2: Reverse DNS Lookup
+
+```python
+import socket
+hostname = socket.gethostbyaddr("8.8.8.8")[0]
+print(hostname)  # Output: dns.google
+```
+
+---
+
+### ✅ Example 3: Port Scanner with Loop
+
+```python
+import socket
+
+target = "127.0.0.1"
+
+for port in range(20, 30):
+    sock = socket.socket()
+    sock.settimeout(0.3)
+    try:
+        sock.connect((target, port))
+        print(f"Port {port} is open")
+    except:
+        print(f"Port {port} is closed")
+    sock.close()
+```
+
+---
+
+### ⚠️ Why This Is Important for Flask Apps
+
+* These modules give you **raw power** to interact with networks.
+* Flask just **wraps the user interaction (frontend)** and **routes**.
+* Without this Python backend logic, your tools are just buttons.
+
+---
+
+## 🔁 Summary to Memorize
+
+| Task                  | Module       | Function                      |
+| --------------------- | ------------ | ----------------------------- |
+| Get IP from domain    | `socket`     | `gethostbyname()`             |
+| Get hostname from IP  | `socket`     | `gethostbyaddr()`             |
+| Check if port is open | `socket`     | `connect((host, port))`       |
+| Run ping              | `subprocess` | `check_output(['ping', ...])` |
+| Run nmap              | `subprocess` | `check_output(['nmap', ...])` |
+| Whois info            | `whois`      | `whois(domain)`               |
+
+------------------------------------------------------------------------------------------------------------------------------------------------------------------
+routes.py:-
+import os
+import xml.etree.ElementTree as ET
+from flask import Blueprint, render_template, request, redirect, url_for, flash
+
+nessus_bp = Blueprint('nessus', __name__, template_folder='templates/nessus')
+
+UPLOAD_FOLDER = os.path.join(os.getcwd(), 'uploads')
+os.makedirs(UPLOAD_FOLDER, exist_ok=True)
+
+# Parser function
+def parse_nessus(filepath):
+    tree = ET.parse(filepath)
+    root = tree.getroot()
+    summary_data = []
+
+    for report_host in root.findall(".//ReportHost"):
+        host_ip = report_host.attrib.get("name", "Unknown")
+        host_properties = {tag.attrib['name']: tag.text for tag in report_host.findall("HostProperties/tag")}
+        os_name = host_properties.get("operating-system", "Unknown OS")
+
+        findings = []
+        for item in report_host.findall("ReportItem"):
+            findings.append({
+                "plugin": item.attrib.get("pluginName", "Unknown Plugin"),
+                "severity": item.attrib.get("severity", "0"),
+                "port": item.attrib.get("port", "N/A"),
+                "protocol": item.attrib.get("protocol", "N/A"),
+                "description": item.findtext("description", "").strip()[:300]
+            })
+
+        summary_data.append({
+            "host_ip": host_ip,
+            "os": os_name,
+            "findings": findings
+        })
+
+    return summary_data
+
+# Routes
+@nessus_bp.route('/nessus_home')
+def nessus_home():
+    return render_template('nessus_dashboard.html')
+
+@nessus_bp.route('/nessus/upload', methods=['GET', 'POST'])
+def nessus_upload():
+    if request.method == 'POST':
+        file = request.files['nessus_file']
+        if file and file.filename.endswith('.nessus'):
+            filepath = os.path.join(UPLOAD_FOLDER, file.filename)
+            file.save(filepath)
+            summary = parse_nessus(filepath)
+            return render_template('nessus_results.html', report=summary)
+        else:
+            flash("Please upload a valid .nessus file", "error")
+            return redirect(url_for('nessus.nessus_upload'))
+    return render_template('nessus_dashboard.html')
+
+@nessus_bp.route('/nessus/analyze', methods=['POST'])
+def analyze_nessus():
+    file = request.files.get('nessus_file')
+    if not file or not file.filename.endswith('.nessus'):
+        flash("Please upload a valid .nessus file", "error")
+        return redirect(url_for('nessus.nessus_home'))
+
+    filepath = os.path.join(UPLOAD_FOLDER, file.filename)
+    file.save(filepath)
+    parsed_data = parse_nessus(filepath)
+    print(parsed_data)
+    return render_template('nessus_results.html', report=parsed_data)
+------------------------------------------------------------------------
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>Nessus Analyzer Dashboard</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            padding: 30px;
+            background-color: #f4f6f9;
+            color: #333;
+        }
+
+        .container {
+            max-width: 800px;
+            margin: auto;
+        }
+
+        h1 {
+            text-align: center;
+            margin-bottom: 20px;
+        }
+
+        .button-top {
+            display: flex;
+            justify-content: center;
+            margin-bottom: 20px;
+        }
+
+        .button-top a {
+            padding: 10px 20px;
+            background-color: #007bff;
+            color: white;
+            text-decoration: none;
+            border-radius: 5px;
+        }
+
+        .upload-box {
+            background-color: white;
+            padding: 20px;
+            border-radius: 10px;
+            box-shadow: 0 0 10px rgba(0,0,0,0.1);
+            margin-bottom: 30px;
+        }
+
+        .upload-box form {
+            display: flex;
+            flex-direction: column;
+            gap: 10px;
+        }
+
+        input[type="file"] {
+            padding: 5px;
+        }
+
+        button {
+            width: 150px;
+            padding: 10px;
+            background-color: #28a745;
+            color: white;
+            border: none;
+            border-radius: 5px;
+            cursor: pointer;
+        }
+
+        button:hover {
+            background-color: #218838;
+        }
+
+        .instructions {
+            background-color: #e9ecef;
+            padding: 15px;
+            border-radius: 10px;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>Nessus Scan Analyzer</h1>
+
+        <div style="margin-top: 20px; margin-bottom: 40px; text-align: center;">
+  <a href="https://localhost:8834" target="_blank" rel="noopener noreferrer">
+    <button style="padding: 10px 20px; font-size: 16px; background-color: #007BFF; color: white; border: none; border-radius: 5px;">
+      Open Nessus GUI
+    </button>
+  </a>
+</div>
+
+
+
+        <div class="upload-box">
+            <form action="{{ url_for('nessus.analyze_nessus') }}" method="post" enctype="multipart/form-data">
+                <label for="nessus_file">Upload your exported <strong>.nessus</strong> file:</label>
+                <input type="file" name="nessus_file" id="nessus_file" accept=".nessus" required>
+                <button type="submit">Analyze</button>
+            </form>
+        </div>
+
+        <div class="instructions">
+            <h3>Instructions</h3>
+            <ul>
+                <li>Open the Nessus GUI and complete your scan.</li>
+                <li>Export the scan results as a <code>.nessus</code> file.</li>
+                <li>Upload the file here and click "Analyze".</li>
+                <li>Wait for the report summary to be generated.</li>
+            </ul>
+        </div>
+    </div>
+</body>
+</html>
+------------------------------------------------------------------------
+<!-- templates/nessus/nessus_results.html -->
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>Nessus Scan Results</title>
+    <style>
+        body { font-family: Arial; padding: 20px; background: #f4f4f4; }
+        h1 { color: #333; }
+        .host { background: #fff; margin: 10px 0; padding: 15px; border-radius: 8px; box-shadow: 0 0 5px #ccc; }
+        .finding { margin-left: 20px; padding: 5px; }
+    </style>
+</head>
+<body>
+    <h1>Nessus Scan Summary</h1>
+
+    {% if report %}
+        {% for host in report %}
+            <div class="host">
+                <h3>Host: {{ host.host_ip }} | OS: {{ host.os }}</h3>
+                {% if host.findings %}
+                    {% for finding in host.findings %}
+                        <div class="finding">
+                            <strong>Plugin:</strong> {{ finding.plugin }}<br>
+                            <strong>Severity:</strong> {{ finding.severity }}<br>
+                            <strong>Port:</strong> {{ finding.port }} / {{ finding.protocol }}<br>
+                            <strong>Description:</strong> {{ finding.description }}
+                        </div>
+                    {% endfor %}
+                {% else %}
+                    <p>No findings for this host.</p>
+                {% endif %}
+            </div>
+        {% endfor %}
+    {% else %}
+        <p>No scan data found.</p>
+    {% endif %}
+</body>
+</html>
+------------------------------------------------------------------------
+
+Routes.py explanation:-
+---
+
+## 1. **Module Imports – Why We Need Each One**
+
+```python
+import os
+import xml.etree.ElementTree as ET
+from flask import Flask, render_template, request, redirect, url_for
+from werkzeug.utils import secure_filename
+```
+
+| **Import**                    | **Purpose**                                                             |
+| ----------------------------- | ----------------------------------------------------------------------- |
+| `os`                          | For file system operations (like saving uploaded files to disk)         |
+| `xml.etree.ElementTree as ET` | To parse the `.nessus` XML files                                        |
+| `flask` modules               |                                                                         |
+| → `Flask`                     | Create the Flask web app instance                                       |
+| → `render_template`           | Render HTML pages using Jinja templates                                 |
+| → `request`                   | Access form data, uploaded files, etc.                                  |
+| → `redirect`, `url_for`       | Navigate between routes after actions (e.g. redirect after upload)      |
+| `secure_filename`             | Secure the filename of uploaded files to prevent path traversal attacks |
+
+---
+
+## 2. **The `parse_nessus(filepath)` Function**
+
+This function takes the uploaded `.nessus` file and extracts useful information.
+
+### Here's what it does step-by-step:
+
+```python
+def parse_nessus(filepath):
+    tree = ET.parse(filepath)                  # Parses the XML file
+    root = tree.getroot()                      # Gets the root of the XML tree
+    summary_data = []                          # List to store structured results
+```
+
+---
+
+### Step 1: For each Host scanned
+
+```python
+    for report_host in root.findall(".//ReportHost"):
+        host_ip = report_host.attrib.get("name", "Unknown")
+```
+
+* Finds each `<ReportHost>` tag, which contains details about a scanned machine.
+* Grabs the `name` attribute — usually the IP address.
+
+---
+
+### Step 2: Get Operating System
+
+```python
+        host_properties = {tag.attrib['name']: tag.text for tag in report_host.findall("HostProperties/tag")}
+        os_name = host_properties.get("operating-system", "Unknown OS")
+```
+
+* Extracts metadata like OS, hostname, etc. from `<HostProperties>` → `<tag name="...">value</tag>`
+
+---
+
+### Step 3: Get Security Findings for that Host
+
+```python
+        findings = []
+        for item in report_host.findall("ReportItem"):
+            findings.append({
+                "plugin": item.attrib.get("pluginName", "Unknown Plugin"),
+                "severity": item.attrib.get("severity", "0"),
+                "port": item.attrib.get("port", "N/A"),
+                "protocol": item.attrib.get("protocol", "N/A"),
+                "description": item.findtext("description", "").strip()[:300]
+            })
+```
+
+Each `<ReportItem>` is a finding:
+
+* Plugin name (what detected the issue)
+* Severity (0 = Info, 1 = Low, 2 = Medium, etc.)
+* Port + Protocol (e.g. 80/tcp)
+* Description (trimmed to 300 chars for display)
+
+---
+
+### Step 4: Store the Data for that Host
+
+```python
+        summary_data.append({
+            "host_ip": host_ip,
+            "os": os_name,
+            "findings": findings
+        })
+```
+
+Each item is a dict containing:
+
+* IP of host
+* OS name
+* List of findings
+
+Finally:
+
+```python
+    return summary_data
+```
+
+The list is returned and used to populate the HTML template (`results.html`).
+
+---
+
+##  3. **Flask Routes**
+
+You typically have 2 routes:
+
+---
+
+### `/nessus-upload` → File Upload Page
+
+```python
+@app.route('/nessus-upload', methods=['GET', 'POST'])
+def nessus_upload():
+    if request.method == 'POST':
+        file = request.files['file']
+        ...
+        filepath = os.path.join(upload_dir, filename)
+        file.save(filepath)
+        return redirect(url_for('nessus_results', filename=filename))
+    return render_template('nessus_upload.html')
+```
+
+* GET: Shows the upload form
+* POST: Handles file upload, saves it securely, redirects to `/nessus-results`
+
+---
+
+### `/nessus-results` → Results Display Page
+
+```python
+@app.route('/nessus-results/<filename>')
+def nessus_results(filename):
+    filepath = os.path.join("uploads", filename)
+    summary_data = parse_nessus(filepath)
+    return render_template("results.html", summary=summary_data)
+```
+
+* Reads the file you uploaded
+* Parses it using your function `parse_nessus()`
+* Sends the result to `results.html` where it’s shown to the user
+
+---
+
+## Summary
+
+| **Component**              | **Purpose**                                                        |
+| -------------------------- | ------------------------------------------------------------------ |
+| `parse_nessus()`           | Turns Nessus XML file into clean Python data (hosts, OS, findings) |
+| Upload route (`/upload`)   | Shows the form, saves the file                                     |
+| Results route (`/results`) | Parses and displays data in a user-friendly format                 |
+| `render_template`          | Loads HTML files and injects Python data into them                 |
+| `secure_filename`          | Prevents attacks via filenames during upload                       |
+
+
+
+1f07d0565a11b6f3c2be0805cd2e7d6b217e6ab1450701420a42b3e82d3c8ebb
+0f98a22ed6bccb43226c3e22d208d584ef7caa9fc059e1de4be3ec968562a4c5
+
+
+
