@@ -6,8 +6,8 @@ import os, time
 nessus2_bp = Blueprint('nessus2', __name__, template_folder='templates/nessus2')
 
 NESSUS_URL = os.getenv('NESSUS_URL', 'https://localhost:8834')
-ACCESS_KEY = os.getenv('NESSUS_ACCESS_KEY', '7335f4864be3324410054d494b808787f9da88477fb8bf910c4aed73a2b45847')
-SECRET_KEY = os.getenv('NESSUS_SECRET_KEY', '5af3a0233c402f0151cbf6b500436029c115d0709de220623762d4c36d7e1211')
+ACCESS_KEY = os.getenv('NESSUS_ACCESS_KEY', 'bffd5d8516dc46c447b9e3e11651700502d1abc83f31e27eae5824837ade3e52')
+SECRET_KEY = os.getenv('NESSUS_SECRET_KEY', '6fc4a711e9cf6f427e653fb58c710a8b268c931cd800ebb15c55b747d2c5bcd2')
 
 nessus = NessusAPI(NESSUS_URL, ACCESS_KEY, SECRET_KEY)
 
