@@ -1,0 +1,77 @@
+<!doctype html>
+<html>
+<head>
+  <title>Scan {{ scan_id }} Summary</title>
+  <style>
+      body {
+          font-family: Arial, sans-serif;
+          background: #f5f7fa;
+          margin: 0;
+          padding: 20px;
+          color: #333;
+      }
+
+      h1 {
+          color: #2c3e50;
+          margin-bottom: 20px;
+      }
+
+      ul {
+          list-style: none;
+          padding: 0;
+          max-width: 400px;
+      }
+
+      ul li {
+          background: white;
+          padding: 12px 16px;
+          margin-bottom: 10px;
+          border-radius: 6px;
+          box-shadow: 0 2px 5px rgba(0,0,0,0.1);
+          display: flex;
+          justify-content: space-between;
+          font-size: 16px;
+      }
+
+      ul li span {
+          font-weight: bold;
+      }
+
+      .back-link {
+          display: inline-block;
+          margin-top: 20px;
+          text-decoration: none;
+      }
+
+      .back-link button {
+          background: #27ae60;
+          border: none;
+          padding: 10px 18px;
+          border-radius: 6px;
+          color: white;
+          font-size: 15px;
+          cursor: pointer;
+          transition: background 0.3s ease;
+          box-shadow: 0 3px 6px rgba(0,0,0,0.15);
+      }
+
+      .back-link button:hover {
+          background: #1e8449;
+      }
+  </style>
+</head>
+<body>
+  <h1>Scan {{ scan_id }} Summary</h1>
+  <ul>
+    <li>Total Hosts <span>{{ summary.hosts }}</span></li>
+    <li>Critical <span style="color:#e74c3c">{{ summary.critical }}</span></li>
+    <li>High <span style="color:#d35400">{{ summary.high }}</span></li>
+    <li>Medium <span style="color:#f39c12">{{ summary.medium }}</span></li>
+    <li>Low <span style="color:#27ae60">{{ summary.low }}</span></li>
+  </ul>
+
+  <a href="{{ url_for('nessus2.scan_details', scan_id=scan_id) }}" class="back-link">
+    <button>⬅ Back to Scan Details</button>
+  </a>
+</body>
+</html>
