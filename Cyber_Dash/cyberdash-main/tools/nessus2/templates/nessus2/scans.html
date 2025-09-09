@@ -4,65 +4,121 @@
     <meta charset="UTF-8" />
     <title>Nessus Scan List</title>
     <style>
+        body {
+            font-family: Arial, sans-serif;
+            background: #f5f7fa;
+            margin: 0;
+            padding: 20px;
+            color: #333;
+        }
+
+        h1 {
+            text-align: center;
+            font-size: 28px;
+            margin-bottom: 30px;
+            color: #2c3e50;
+        }
+
+        .table-container {
+            max-width: 900px;
+            margin: 0 auto;
+            background: #fff;
+            border-radius: 8px;
+            box-shadow: 0 4px 10px rgba(0,0,0,0.08);
+            padding: 20px;
+        }
+
         table {
             border-collapse: collapse;
             width: 100%;
-            max-width: 800px;
-            margin: 20px auto;
-            font-family: Arial, sans-serif;
         }
+
         thead th {
-            background-color: #333;
+            background-color: #34495e;
             color: white;
-            padding: 10px;
+            padding: 12px;
             text-align: left;
+            font-size: 15px;
         }
+
         tbody tr:nth-child(odd) {
             background-color: #f9f9f9;
         }
+
         tbody tr:hover {
-            background-color: #eef;
+            background-color: #ecf6ff;
         }
+
         td, th {
-            border: 1px solid #ccc;
-            padding: 8px 12px;
+            border: 1px solid #ddd;
+            padding: 10px 14px;
+            font-size: 14px;
         }
-        a {
-            color: #0066cc;
+
+        .actions {
+            display: flex;
+            gap: 10px;
+        }
+
+        .actions a {
+            display: inline-block;
+            padding: 6px 12px;
+            border-radius: 5px;
             text-decoration: none;
+            font-size: 13px;
+            font-weight: 500;
+            transition: background 0.3s ease;
         }
-        a:hover {
-            text-decoration: underline;
+
+        .actions a:first-child {
+            background: #3498db;
+            color: white;
         }
-        h1 {
-            text-align: center;
-            font-family: Arial, sans-serif;
-            margin-top: 40px;
+
+        .actions a:first-child:hover {
+            background: #2980b9;
+        }
+
+        .actions a:last-child {
+            background: #27ae60;
+            color: white;
+        }
+
+        .actions a:last-child:hover {
+            background: #1e8449;
         }
     </style>
 </head>
 <body>
-<h1>Available Nessus Scans</h1>
-<table aria-label="List of Nessus scans">
-    <thead>
-        <tr>
-            <th scope="col">Name</th>
-            <th scope="col">Status</th>
-            <th scope="col">Actions</th>
-        </tr>
-    </thead>
-    <tbody>
-    {% for scan in scans %}
-        <tr>
-            <td>{{ scan.name }}</td>
-            <td>{{ scan.status }}</td>
-            <td>
-                <a href="{{ url_for('nessus2.open_gui', scan_id=scan.id) }}" target="_blank" rel="noopener noreferrer">Open in Nessus GUI</a>
-                <a href="{{ url_for('nessus2.scan_details', scan_id=scan.id) }}">Details</a>
-            </td>
-        </tr>
-    {% endfor %}
-    </tbody>
-</table>
+    <h1>Available Nessus Scans</h1>
+    <div class="table-container">
+        <table aria-label="List of Nessus scans">
+            <thead>
+                <tr>
+                    <th scope="col">Name</th>
+                    <th scope="col">Status</th>
+                    <th scope="col">Actions</th>
+                </tr>
+            </thead>
+            <tbody>
+            {% for scan in scans %}
+                <tr>
+                    <td>{{ scan.name }}</td>
+                    <td>{{ scan.status }}</td>
+                    <td>
+                        <div class="actions">
+                            <a href="https://localhost:8834" target="_blank" rel="noopener noreferrer">
+                                GUI
+                            </a>
+                            <a href="{{ url_for('nessus2.scan_details', scan_id=scan.id) }}">
+                                Details
+                            </a>
+                        </div>
+                    </td>
+                </tr>
+            {% endfor %}
+            </tbody>
+        </table>
+    </div>
 </body>
 </html>
